@@ -14,9 +14,16 @@
 
   Requiere que en index.html se cargue antes:
   <script src="/facetec/FaceTecSDK-browser-10.1.17/core-sdk/FaceTecSDK.js/FaceTecSDK.js"></script>
+
+  Nota: todo lo que está en client/public/ es un archivo estático que Vite
+  copia tal cual (no forma parte del grafo de módulos), así que no se puede
+  hacer `import` de Config.js desde ahí -- por eso el DeviceKeyIdentifier se
+  copia aquí como constante en vez de importarlo. No es secreto: viaja igual
+  al navegador dentro del propio Config.js.
 */
-import { Config } from "/facetec/FaceTecSDK-browser-10.1.17/Config.js";
 import { relayFaceTecBlob } from "../api";
+
+const DEVICE_KEY_IDENTIFIER = "dEHioZ0I0AgYkR31G08ToL2kdpN9t6wm";
 
 let sdkInstance = null;
 let initPromise = null;
@@ -55,7 +62,7 @@ function initSDK() {
     // El SessionRequestProcessor usado solo para inicializar no dispara sesión real,
     // pero el SDK igual puede necesitar el mismo contrato de blobs al iniciar.
     const initProcessor = buildSessionRequestProcessor();
-    FaceTecSDK.initializeWithSessionRequest(Config.DeviceKeyIdentifier, initProcessor, {
+    FaceTecSDK.initializeWithSessionRequest(DEVICE_KEY_IDENTIFIER, initProcessor, {
       onSuccess: (instance) => {
         sdkInstance = instance;
         resolve(instance);
