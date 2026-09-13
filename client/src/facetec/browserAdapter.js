@@ -1,22 +1,88 @@
 /*
-  Adaptador aislado para el Browser SDK privado de FaceTec.
-  Copie FaceTecSDK.js y sus carpetas resources/ e images/ desde el ZIP oficial a
-  client/public/facetec/; después implemente la llamada exacta de su versión en
-  createFaceTecIntegration(). No use navigator.userAgent: el valor aceptado por
-  FaceTec es el X-User-Agent que genera su SDK.
-*/
-function integration() { return window.createFaceTecIntegration?.(); }
+  Adaptador real para el FaceTec Browser SDK 10.1.17 (SOLO PRUEBA/PoC).
 
-export async function runIdentitySession({ sessionToken, onStep }) {
-  const sdk = integration();
-  if (!sdk) throw new Error("FaceTec Browser SDK no está instalado. Siga client/public/facetec/README.md.");
-  // La operación oficial compuesta impone: liveness 3D -> ID front -> ID back.
-  // El wrapper debe mostrar cada UI y resolver únicamente tras capturar las tres partes.
-  const result = await sdk.start3DLivenessThen3D2DPhotoIDMatch({
-    sessionToken,
-    onLivenessComplete: () => onStep(2),
-    onFrontIdComplete: () => onStep(3),
+  Esta versión del SDK NO devuelve faceScan/idScan al navegador ni acepta
+  un sessionToken previo. Funciona por relevo de "blobs" opacos:
+  1) El SDK genera un requestBlob cifrado.
+  2) Tu backend lo reenvía tal cual al servidor de FaceTec (aquí: el Testing
+     API, válido solo para pruebas, no para producción).
+  3) El servidor de FaceTec responde con un responseBlob, que se lo devuelves
+     tal cual al SDK.
+  4) Al terminar la sesión, el SDK solo te da un status (completada,
+     cancelada, error de cámara, etc.). El resultado real de la
+     verificación (match, liveness, OCR) vive en FaceTec Server, no aquí.
+
+  Requiere que en index.html se cargue antes:
+  <script src="/facetec/FaceTecSDK-browser-10.1.17/core-sdk/FaceTecSDK.js/FaceTecSDK.js"></script>
+*/
+import { Config } from "/facetec/FaceTecSDK-browser-10.1.17/Config.js";
+import { relayFaceTecBlob } from "../api";
+
+let sdkInstance = null;
+let initPromise = null;
+
+function getSDK() {
+  const sdk = window.FaceTecSDK;
+  if (!sdk) throw new Error("FaceTecSDK.js no se cargó. Revisa el <script> en index.html.");
+  return sdk;
+}
+
+function buildSessionRequestProcessor(onExit) {
+  return {
+    // El SDK llama esto cuando genera un blob que hay que mandar a FaceTec Server.
+    onSessionRequest(requestBlob, sessionRequestCallback) {
+      relayFaceTecBlob(requestBlob)
+        .then((responseBlob) => sessionRequestCallback.processResponse(responseBlob))
+        .catch(() => sessionRequestCallback.abortOnCatastrophicError());
+    },
+    // Progreso de subida, útil para la barra de progreso propia del SDK.
+    onUploadProgress(_progressEvent) {},
+    // Se llama SIEMPRE al cerrar la sesión del SDK (éxito, cancelación o error).
+    onFaceTecExit(faceTecSessionResult) {
+      onExit?.(faceTecSessionResult);
+    },
+  };
+}
+
+function initSDK() {
+  if (initPromise) return initPromise;
+  const FaceTecSDK = getSDK();
+
+  FaceTecSDK.setResourceDirectory("/facetec/FaceTecSDK-browser-10.1.17/core-sdk/FaceTecSDK.js/resources");
+  FaceTecSDK.setImagesDirectory("/facetec/FaceTecSDK-browser-10.1.17/core-sdk/FaceTec_images");
+
+  initPromise = new Promise((resolve, reject) => {
+    // El SessionRequestProcessor usado solo para inicializar no dispara sesión real,
+    // pero el SDK igual puede necesitar el mismo contrato de blobs al iniciar.
+    const initProcessor = buildSessionRequestProcessor();
+    FaceTecSDK.initializeWithSessionRequest(Config.DeviceKeyIdentifier, initProcessor, {
+      onSuccess: (instance) => {
+        sdkInstance = instance;
+        resolve(instance);
+      },
+      onError: (error) => reject(new Error(`No se pudo inicializar FaceTecSDK (código ${error}).`)),
+    });
   });
-  if (!result?.xUserAgent || !result?.faceScan || !result?.idScan) throw new Error("El Browser SDK devolvió una sesión incompleta.");
-  return result;
+  return initPromise;
+}
+
+// onStep(2) = terminó liveness, onStep(3) = terminó cédula frente.
+// No hay onStep(4)/capturas aquí: eso se resuelve consultando tu backend
+// después de que el SDK cierre la sesión (ver processIdCheck en api.js).
+export async function runIdentitySession({ onStep }) {
+  const instance = sdkInstance || (await initSDK());
+
+  return new Promise((resolve, reject) => {
+    const processor = buildSessionRequestProcessor((result) => {
+      const FaceTecSDK = getSDK();
+      if (result.status === FaceTecSDK.FaceTecSessionStatus.SessionCompleted) {
+        onStep?.(3);
+        resolve(result);
+      } else {
+        reject(new Error(`Sesión de FaceTec no completada (status ${result.status}).`));
+      }
+    });
+    onStep?.(1);
+    instance.start3DLivenessThen3D2DPhotoIDMatch(processor);
+  });
 }
