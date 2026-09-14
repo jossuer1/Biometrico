@@ -1,16 +1,17 @@
 import { useState } from "react";
 import { runIdentitySession } from "../facetec/browserAdapter";
+import { requestFullscreenBestEffort } from "../utils/fullscreen";
 
 export default function FaceTecScanner({ onComplete, onCancel }) {
   const [step, setStep] = useState(1); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const labels = ["Prueba de vida facial", "Cédula: frente y reverso", "Sesión enviada a FaceTec"];
   async function start() {
+    requestFullscreenBestEffort(); // debe ir primero: es la respuesta directa al toque
     setBusy(true); setError("");
     try {
-      await runIdentitySession({ onStep: setStep });
-      // El resultado (match, liveness, OCR) vive en FaceTec Server; esta
-      // versión de prueba solo confirma que la sesión del SDK se completó.
-      onComplete({ status: "session_completed" });
+      const { result } = await runIdentitySession({ onStep: setStep });
+      // result trae matchLevel/livenessProven/documentData: lo evalúa Results.jsx.
+      onComplete(result);
     } catch (e) { setError(e.message || "No se completó la verificación."); }
     finally { setBusy(false); }
   }

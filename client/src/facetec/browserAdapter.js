@@ -34,12 +34,17 @@ function getSDK() {
   return sdk;
 }
 
-function buildSessionRequestProcessor(onExit) {
+function buildSessionRequestProcessor(onExit, onResult) {
   return {
     // El SDK llama esto cuando genera un blob que hay que mandar a FaceTec Server.
     onSessionRequest(requestBlob, sessionRequestCallback) {
       relayFaceTecBlob(requestBlob)
-        .then((responseBlob) => sessionRequestCallback.processResponse(responseBlob))
+        .then((data) => {
+          // Guarda el último "result" recibido (matchLevel, livenessProven,
+          // documentData, success...). El de la última llamada es el final.
+          if (data?.result) onResult?.(data.result);
+          sessionRequestCallback.processResponse(data.responseBlob);
+        })
         .catch(() => sessionRequestCallback.abortOnCatastrophicError());
     },
     // Progreso de subida, útil para la barra de progreso propia del SDK.
@@ -74,21 +79,28 @@ function initSDK() {
 }
 
 // onStep(2) = terminó liveness, onStep(3) = terminó cédula frente.
-// No hay onStep(4)/capturas aquí: eso se resuelve consultando tu backend
-// después de que el SDK cierre la sesión (ver processIdCheck en api.js).
+// Resuelve con { status, result } donde result es el ÚLTIMO dato que
+// devolvió FaceTec Server (matchLevel, livenessProven, documentData...).
 export async function runIdentitySession({ onStep }) {
   const instance = sdkInstance || (await initSDK());
 
   return new Promise((resolve, reject) => {
-    const processor = buildSessionRequestProcessor((result) => {
-      const FaceTecSDK = getSDK();
-      if (result.status === FaceTecSDK.FaceTecSessionStatus.SessionCompleted) {
-        onStep?.(3);
-        resolve(result);
-      } else {
-        reject(new Error(`Sesión de FaceTec no completada (status ${result.status}).`));
-      }
-    });
+    let lastResult = null;
+    const processor = buildSessionRequestProcessor(
+      (faceTecSessionResult) => {
+        const FaceTecSDK = getSDK();
+        if (faceTecSessionResult.status === FaceTecSDK.FaceTecSessionStatus.SessionCompleted) {
+          onStep?.(3);
+          resolve({ status: faceTecSessionResult.status, result: lastResult });
+        } else {
+          reject(Object.assign(
+            new Error(`Sesión de FaceTec no completada (status ${faceTecSessionResult.status}).`),
+            { status: faceTecSessionResult.status, result: lastResult }
+          ));
+        }
+      },
+      (result) => { lastResult = result; }
+    );
     onStep?.(1);
     instance.start3DLivenessThen3D2DPhotoIDMatch(processor);
   });
