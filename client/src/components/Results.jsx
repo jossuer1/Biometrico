@@ -16,6 +16,7 @@ export default function Results({ result, onClear }) {
     match: "Identidad verificada",
     no_match: "No coincide con la cédula",
     no_liveness: "No se pudo confirmar que hay una persona real",
+    indeterminado: "Verificación incompleta",
     error: "No se pudo verificar",
   };
 
@@ -26,8 +27,8 @@ export default function Results({ result, onClear }) {
       <p className={outcome === "match" ? "" : "error"}>{message}</p>
       {outcome === "no_match" && (
         <p>
-          Esto puede significar que la persona frente a la cámara no es la
-          misma que aparece en la cédula, o que la captura tuvo mala
+          Esto puede significar que la persona frente a la cámara no es la misma
+          que aparece en la cédula, o que la captura tuvo mala
           iluminación/calidad. Se recomienda repetir el intento antes de
           rechazar definitivamente.
         </p>
@@ -37,7 +38,9 @@ export default function Results({ result, onClear }) {
       )}
 
       <details style={{ textAlign: "left", marginTop: 12 }}>
-        <summary style={{ cursor: "pointer", fontSize: 13, color: "#888" }}>Ver datos técnicos</summary>
+        <summary style={{ cursor: "pointer", fontSize: 13, color: "#888" }}>
+          Ver datos técnicos
+        </summary>
         <pre
           style={{
             background: "#f5f5f5",
