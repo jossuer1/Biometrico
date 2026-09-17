@@ -22,6 +22,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 // en el navegador, lo reenvía sin tocar al Testing API de FaceTec, y
 // devuelve la respuesta (responseBlob + result si aplica) sin tocarla.
 app.post("/api/facetec/relay", async (req, res) => {
+  console.log("[relay] request recibida, tiene testingApiHeader:", !!req.body?.testingApiHeader);
   const { requestBlob, testingApiHeader } = req.body || {};
   if (!requestBlob || typeof requestBlob !== "string") {
     return res.status(400).json({ error: true, message: "Falta requestBlob generado por el FaceTec Browser SDK." });
@@ -31,19 +32,21 @@ app.post("/api/facetec/relay", async (req, res) => {
   }
   try {
     const response = await axios.post(
-      facetecTestingApiUrl,
-      { requestBlob },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "X-Device-Key": deviceKey,
-          "X-Testing-API-Header": testingApiHeader,
-        },
-        timeout: 60_000,
-      }
-    );
-    // No se registra el cuerpo: puede contener biometría y PII.
-    res.json(response.data);
+  facetecTestingApiUrl,
+  { requestBlob },
+  {
+    headers: {
+      "Content-Type": "application/json",
+      "X-Device-Key": deviceKey,
+      "X-Testing-API-Header": testingApiHeader,
+    },
+    timeout: 60_000,
+  }
+);
+console.log("[relay] claves:", Object.keys(response.data),
+            "| result:", response.data?.result ? Object.keys(response.data.result) : null);
+// No se registra el cuerpo: puede contener biometría y PII.
+res.json(response.data);
   } catch (error) {
     const status = error.response?.status || 502;
     const body = error.response?.data;
