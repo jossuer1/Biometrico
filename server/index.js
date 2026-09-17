@@ -22,7 +22,11 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 // en el navegador, lo reenvía sin tocar al Testing API de FaceTec, y
 // devuelve la respuesta (responseBlob + result si aplica) sin tocarla.
 app.post("/api/facetec/relay", async (req, res) => {
-  console.log("[relay] request recibida, tiene testingApiHeader:", !!req.body?.testingApiHeader);
+  console.log("[relay] claves:", Object.keys(response.data),
+            "| result:", response.data?.result ? Object.keys(response.data.result) : null,
+            "| idScanResultsSoFar:", response.data?.idScanResultsSoFar
+              ? JSON.stringify(response.data.idScanResultsSoFar).slice(0, 500)
+              : null);
   const { requestBlob, testingApiHeader } = req.body || {};
   if (!requestBlob || typeof requestBlob !== "string") {
     return res.status(400).json({ error: true, message: "Falta requestBlob generado por el FaceTec Browser SDK." });

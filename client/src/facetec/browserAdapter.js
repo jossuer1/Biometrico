@@ -42,6 +42,7 @@ function buildSessionRequestProcessor(onExit, onResult) {
         .then((data) => {
           console.log("[FaceTec] respuesta:", Object.keys(data), data.result);
           if (data?.result) onResult?.(data.result);
+          if (data?.idScanResultsSoFar) onResult?.(data.idScanResultsSoFar);
           sessionRequestCallback.processResponse(data.responseBlob);
         })
         .catch(() => sessionRequestCallback.abortOnCatastrophicError());
