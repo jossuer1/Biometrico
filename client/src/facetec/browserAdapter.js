@@ -40,8 +40,7 @@ function buildSessionRequestProcessor(onExit, onResult) {
     onSessionRequest(requestBlob, sessionRequestCallback) {
       relayFaceTecBlob(requestBlob)
         .then((data) => {
-          // Guarda el último "result" recibido (matchLevel, livenessProven,
-          // documentData, success...). El de la última llamada es el final.
+          console.log("[FaceTec] respuesta:", Object.keys(data), data.result);
           if (data?.result) onResult?.(data.result);
           sessionRequestCallback.processResponse(data.responseBlob);
         })
@@ -78,28 +77,27 @@ function initSDK() {
   return initPromise;
 }
 
-// onStep(2) = terminó liveness, onStep(3) = terminó cédula frente.
-// Resuelve con { status, result } donde result es el ÚLTIMO dato que
-// devolvió FaceTec Server (matchLevel, livenessProven, documentData...).
 export async function runIdentitySession({ onStep }) {
   const instance = sdkInstance || (await initSDK());
 
   return new Promise((resolve, reject) => {
-    let lastResult = null;
+    let merged = null;
+    const all = [];
     const processor = buildSessionRequestProcessor(
       (faceTecSessionResult) => {
         const FaceTecSDK = getSDK();
         if (faceTecSessionResult.status === FaceTecSDK.FaceTecSessionStatus.SessionCompleted) {
           onStep?.(3);
-          resolve({ status: faceTecSessionResult.status, result: lastResult });
+          console.log("[FaceTec] results de la sesión:", all);
+          resolve({ status: faceTecSessionResult.status, result: merged, all });
         } else {
           reject(Object.assign(
             new Error(`Sesión de FaceTec no completada (status ${faceTecSessionResult.status}).`),
-            { status: faceTecSessionResult.status, result: lastResult }
+            { status: faceTecSessionResult.status, result: merged, all }
           ));
         }
       },
-      (result) => { lastResult = result; }
+      (result) => { all.push(result); merged = { ...merged, ...result }; }
     );
     onStep?.(1);
     instance.start3DLivenessThen3D2DPhotoIDMatch(processor);
